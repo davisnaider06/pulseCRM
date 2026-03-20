@@ -1,0 +1,502 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  UPDATE
+  DELETE
+  MANAGE
+}
+
+enum TeamGoalType {
+  REVENUE
+  ACTIVITIES
+}
+
+enum LeadStatus {
+  OPEN
+  WON
+  LOST
+  CONVERTED
+  ABERTO
+  EM_NEGOCIACAO
+  FINALIZADO_COM_VENDA
+  FINALIZADO_SEM_VENDA
+}
+
+enum LeadTemperature {
+  COLD
+  WARM
+  HOT
+}
+
+enum LeadOrigin {
+  VISITA_PRESENCIAL
+  TELEFONE
+  WHATSAPP
+  INSTAGRAM
+}
+
+enum OpportunityStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum TaskType {
+  CALL
+  WHATSAPP
+  EMAIL
+  MEETING
+  PROPOSAL
+  RETURN
+  VISIT
+  OTHER
+}
+
+enum TaskStatus {
+  PENDING
+  COMPLETED
+  OVERDUE
+  CANCELED
+}
+
+enum InteractionType {
+  CALL
+  MESSAGE
+  EMAIL
+  MEETING
+  NOTE
+  STATUS_CHANGE
+  STAGE_CHANGE
+  TASK_COMPLETED
+  ATTACHMENT
+  SYSTEM
+}
+
+enum ClientRelationshipStatus {
+  ACTIVE
+  INACTIVE
+  AT_RISK
+}
+
+enum NotificationType {
+  TASK_DUE
+  TASK_OVERDUE
+  LEAD_STALE
+  OPPORTUNITY_STALE
+  ASSIGNMENT
+  STATUS_CHANGE
+  GOAL_ALERT
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+}
+
+enum GoalPeriod {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum GoalMetric {
+  REVENUE
+  WINS
+  ACTIVITIES
+  LEADS
+}
+
+model User {
+  id                       String         @id @default(cuid())
+  name                     String
+  email                    String         @unique
+  passwordHash             String
+  status                   UserStatus     @default(ACTIVE)
+  phone                    String?
+  jobTitle                 String?
+  isSuperAdmin             Boolean        @default(false)
+  refreshTokenHash         String?
+  lastLoginAt              DateTime?
+  createdAt                DateTime       @default(now())
+  updatedAt                DateTime       @updatedAt
+  teamId                   String?
+  team                     Team?          @relation(fields: [teamId], references: [id])
+  roles                    UserRole[]
+  ownedLeads               Lead[]         @relation("LeadOwner")
+  ownedOpportunities       Opportunity[]  @relation("OpportunityOwner")
+  assignedTasks            Task[]         @relation("TaskAssignee")
+  taskComments             TaskComment[]
+  interactions             Interaction[]
+  notifications            Notification[]
+  goals                    Goal[]
+  auditLogs                AuditLog[]
+  attachments              Attachment[]
+  managedClients           Client[]        @relation("ClientSeller")
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String             @id @default(cuid())
+  resource    String
+  action      PermissionAction
+  description String?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  roles       RolePermission[]
+
+  @@unique([resource, action])
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
+  goals       Goal[]
+}
+
+model LeadSource {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  leads       Lead[]
+}
+
+model Tag {
+  id          String            @id @default(cuid())
+  name        String            @unique
+  color       String?
+  description String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  leads       LeadTagRelation[]
+}
+
+model Pipeline {
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  isDefault   Boolean         @default(false)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  stages      PipelineStage[]
+  leads       Lead[]
+}
+
+model PipelineStage {
+  id          String             @id @default(cuid())
+  pipelineId  String
+  name        String
+  description String?
+  order       Int
+  isWonStage  Boolean            @default(false)
+  isLostStage Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  pipeline    Pipeline           @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  leads       Lead[]             @relation("LeadCurrentStage")
+  histories   LeadStageHistory[]
+
+  @@unique([pipelineId, order])
+}
+
+model LossReason {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  leads       Lead[]
+}
+
+model Lead {
+  id                 String             @id @default(cuid())
+  name               String
+  company            String?
+  phone              String?
+  email              String?
+  origin             LeadOrigin?
+  vehicleInterest    String?
+  entryChannel       String?
+  jobTitle           String?
+  segment            String?
+  notes              String?
+  status             LeadStatus         @default(OPEN)
+  temperature        LeadTemperature    @default(WARM)
+  nextFollowUpAt     DateTime?
+  lastInteractionAt  DateTime?
+  lostAt             DateTime?
+  convertedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  ownerId            String?
+  sourceId           String?
+  pipelineId         String?
+  currentStageId     String?
+  lossReasonId       String?
+  owner              User?              @relation("LeadOwner", fields: [ownerId], references: [id])
+  source             LeadSource?        @relation(fields: [sourceId], references: [id])
+  pipeline           Pipeline?          @relation(fields: [pipelineId], references: [id])
+  currentStage       PipelineStage?     @relation("LeadCurrentStage", fields: [currentStageId], references: [id])
+  lossReason         LossReason?        @relation(fields: [lossReasonId], references: [id])
+  tags               LeadTagRelation[]
+  stageHistory       LeadStageHistory[]
+  opportunities      Opportunity[]
+  tasks              Task[]
+  interactions       Interaction[]
+  attachments        Attachment[]
+  auditLogs          AuditLog[]
+  client             Client?
+}
+
+model LeadTagRelation {
+  leadId String
+  tagId  String
+  lead   Lead   @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([leadId, tagId])
+}
+
+model LeadStageHistory {
+  id           String        @id @default(cuid())
+  leadId       String
+  stageId      String
+  enteredAt    DateTime      @default(now())
+  exitedAt     DateTime?
+  movedByUserId String?
+  notes        String?
+  lead         Lead          @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  stage        PipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, enteredAt])
+}
+
+model Opportunity {
+  id                    String             @id @default(cuid())
+  leadId                String
+  ownerId               String?
+  name                  String
+  estimatedValue        Decimal            @db.Decimal(14, 2)
+  closingProbability    Int                @default(0)
+  expectedCloseDate     DateTime?
+  origin                String?
+  status                OpportunityStatus  @default(OPEN)
+  notes                 String?
+  competitors           String?
+  gainReason            String?
+  lossReason            String?
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  lead                  Lead               @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  owner                 User?              @relation("OpportunityOwner", fields: [ownerId], references: [id])
+  products              OpportunityProduct[]
+  tasks                 Task[]
+  interactions          Interaction[]
+  attachments           Attachment[]
+  auditLogs             AuditLog[]
+}
+
+model OpportunityProduct {
+  id            String      @id @default(cuid())
+  opportunityId String
+  name          String
+  quantity      Int         @default(1)
+  unitPrice     Decimal     @db.Decimal(14, 2)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+}
+
+model Task {
+  id             String      @id @default(cuid())
+  title          String
+  description    String?
+  type           TaskType
+  status         TaskStatus  @default(PENDING)
+  dueAt          DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  assigneeId     String?
+  leadId         String?
+  opportunityId  String?
+  createdByUserId String?
+  assignee       User?       @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  lead           Lead?       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  comments       TaskComment[]
+}
+
+model TaskComment {
+  id          String   @id @default(cuid())
+  taskId      String
+  authorId    String
+  content     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  task        Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+model Interaction {
+  id             String          @id @default(cuid())
+  type           InteractionType
+  subject        String?
+  content        String?
+  occurredAt     DateTime        @default(now())
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  leadId         String?
+  opportunityId  String?
+  authorId       String?
+  lead           Lead?           @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity?    @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  author         User?           @relation(fields: [authorId], references: [id], onDelete: SetNull)
+}
+
+model Client {
+  id                 String                   @id @default(cuid())
+  leadId             String                   @unique
+  sellerId           String?
+  name               String
+  legalDocument      String?
+  addressLine        String?
+  city               String?
+  state              String?
+  postalCode         String?
+  notes              String?
+  relationshipStatus ClientRelationshipStatus @default(ACTIVE)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  lead               Lead                     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  seller             User?                    @relation("ClientSeller", fields: [sellerId], references: [id], onDelete: SetNull)
+  contacts           ClientContact[]
+}
+
+model ClientContact {
+  id         String   @id @default(cuid())
+  clientId   String
+  name       String
+  email      String?
+  phone      String?
+  role       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+}
+
+model Goal {
+  id             String      @id @default(cuid())
+  title          String
+  metric         GoalMetric
+  period         GoalPeriod
+  targetValue    Decimal     @db.Decimal(14, 2)
+  achievedValue  Decimal     @default(0) @db.Decimal(14, 2)
+  startsAt       DateTime
+  endsAt         DateTime
+  userId         String?
+  teamId         String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  user           User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team           Team?       @relation(fields: [teamId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  status      NotificationStatus @default(UNREAD)
+  metadata    Json?
+  readAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Attachment {
+  id             String       @id @default(cuid())
+  filename       String
+  originalName   String
+  mimeType       String
+  sizeInBytes    Int
+  storagePath    String
+  uploadedByUserId String?
+  leadId         String?
+  opportunityId  String?
+  createdAt      DateTime     @default(now())
+  uploadedBy     User?        @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  lead           Lead?        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+}
+
+model AuditLog {
+  id             String    @id @default(cuid())
+  entityName     String
+  entityId       String
+  action         String
+  userId         String?
+  leadId         String?
+  opportunityId  String?
+  previousData   Json?
+  currentData    Json?
+  createdAt      DateTime  @default(now())
+  user           User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lead           Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  opportunity    Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+
+  @@index([entityName, entityId])
+}

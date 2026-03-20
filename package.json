@@ -1,0 +1,22 @@
+{
+  "name": "crm-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend"
+  ],
+  "scripts": {
+    "postinstall": "npm --prefix apps/backend install --workspaces=false && npm --prefix apps/frontend install --workspaces=false",
+    "dev": "npm --prefix apps/frontend run dev",
+    "dev:frontend": "npm --prefix apps/frontend run dev",
+    "dev:backend": "npm --prefix apps/backend run start:dev",
+    "build": "npm --prefix apps/backend run build && npm --prefix apps/frontend run build",
+    "lint": "npm --prefix apps/backend run lint && npm --prefix apps/frontend run lint",
+    "test": "npm --prefix apps/backend run test",
+    "test:e2e": "npm --prefix apps/backend run test:e2e",
+    "db:generate": "npm --prefix apps/backend run prisma:generate",
+    "db:migrate": "npm --prefix apps/backend run prisma:migrate",
+    "db:seed": "npm --prefix apps/backend run prisma:seed"
+  }
+}
